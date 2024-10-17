@@ -30,9 +30,10 @@ std::fstream openBinaryFile(const std::string &path,
 
 unsigned getCutSize(unsigned expectSize, unsigned npts) {
   if (expectSize > npts) {
-    std::cout << std::format("WARNING: Expected cut size: {} greater than npts "
-                             "{} of dataset, Using npts as cut size ",
-                             expectSize, npts)
+    std::cout << std::format(
+                     "WARNING: Expected cut size: {} greater than npts "
+                     "{} of dataset, Using npts as cut size ",
+                     expectSize, npts)
               << std::endl;
     return npts;
   } else {
@@ -107,7 +108,7 @@ void writeVec(const std::string &path, const std::unique_ptr<char[]> data,
 int main(int argc, char **argv) {
   if (argc != 6) {
     std::cerr << "ERROR: Argument Mismatch, Please Follow Usage" << std::endl;
-    std::cout << "Usage: ./cut [source dataset path] [source dataset format] "
+    std::cout << "Usage: ./slice [source dataset path] [source dataset format] "
                  "[target dataset path] [target dataset format] [size]"
               << std::endl;
 
@@ -136,7 +137,7 @@ int main(int argc, char **argv) {
   }
 
   std::cout << std::format(
-                   "cut first [{}] vectors of [{}] and save it into [{}]",
+                   "slice first [{}] vectors of [{}] and save it into [{}]",
                    counts, sourcePath, targetPath)
             << std::endl;
 
