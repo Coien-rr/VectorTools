@@ -14,7 +14,7 @@
 
 void checkFileExists(const std::string &path) {
   if (!std::filesystem::exists(path)) {
-    throw std::runtime_error("File not found: " + path);
+    throw std::runtime_error("ERROR(checkFileExists): File Not Found: " + path);
   }
 }
 
@@ -22,10 +22,10 @@ std::fstream openBinaryFile(const std::string &path,
                             std::ios_base::openmode mode) {
   std::fstream reader(path, std::ios::binary | mode);
   if (!reader.is_open()) {
-    std::cout << std::format("ERROR: Failed Open File [{}]", path) << std::endl;
-    throw std::runtime_error("Failed to open file");
+    throw std::runtime_error(
+        std::format("ERROR(openBinaryFile): Failed Open File [{}]", path));
   }
-  return std::move(reader);
+  return reader;
 }
 
 void loadResultBin(const std::string &path, uint32_t &npts, uint32_t &dims,
@@ -39,9 +39,23 @@ void loadResultBin(const std::string &path, uint32_t &npts, uint32_t &dims,
   reader.close();
 }
 
+std::unique_ptr<uint32_t[]> loadResultBin(const std::string &path,
+                                          uint32_t &npts, uint32_t &dims,
+                                          float *resDists) {
+  std::cout << "Read Data From " << path << std::endl;
+  std::fstream reader = openBinaryFile(path, std::ios::in);
+  reader.read(reinterpret_cast<char *>(&npts), sizeof(unsigned));
+  reader.read(reinterpret_cast<char *>(&dims), sizeof(unsigned));
+  std::cout << std::format("Npts: {}, Dims: {}", npts, dims) << std::endl;
+  std::unique_ptr<uint32_t[]> data = std::make_unique<uint32_t[]>(npts * dims);
+  reader.read(reinterpret_cast<char *>(data.get()),
+              sizeof(uint32_t) * npts * dims);
+  reader.close();
+  return data;
+}
+
 std::unique_ptr<uint32_t[]> readBin(const std::string &path) {
   std::fstream reader = openBinaryFile(path, std::ios::in);
-
   unsigned npts{0}, dims{0};
 
   reader.read(reinterpret_cast<char *>(&npts), sizeof(unsigned));
@@ -143,6 +157,14 @@ double computeRecallSTD(const std::vector<double> &recallLists) {
   return std::sqrt(varience);
 }
 
+double computeRecallAvg(const std::vector<double> &recallLists) {
+  if (recallLists.empty()) {
+    return 0;
+  }
+  double sum = std::accumulate(recallLists.begin(), recallLists.end(), 0.0);
+  return sum / recallLists.size();
+}
+
 int main(int argc, char **argv) {
   if (argc != 5) {
     std::cerr << "ERROR: Argument Mismatch, Please Follow Usage" << std::endl;
@@ -165,27 +187,39 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  std::cout << std::format("Read ResultInfo From {} To Compute STD Of Recall",
-                           resultPath)
-            << std::endl;
+  std::cout << "Recall STd Calculator!" << std::endl;
+  std::cout << std::format("Read ResultFile From {}", resultPath) << std::endl;
+  std::cout << std::format("Read GroundTruth From {}", gtPath) << std::endl;
 
-  std::cout << std::format("GroundTruth File is :{}", gtPath) << std::endl;
+  try {
+    if (resultFormat == "bin" && gtFormat == "bin") {
+      unsigned resQueries, gtQueries, resDims, gtDims;
+      std::unique_ptr<uint32_t[]> resIDs =
+          loadResultBin(resultPath, resQueries, resDims, nullptr);
+      std::unique_ptr<uint32_t[]> gtIDs =
+          loadResultBin(gtPath, gtQueries, gtDims, nullptr);
+      const std::vector<double> recallLists = calculateRecallPerQuery(
+          resQueries, gtIDs.get(), nullptr, gtDims, resIDs.get(), resDims, 100);
+      double recallAvg = computeRecallAvg(recallLists);
+      double stdRecall = computeRecallSTD(recallLists);
 
-  if (resultFormat == "bin" && gtFormat == "bin") {
-    std::cout << "bin" << std::endl;
-    unsigned resQueries, gtQueries, resDims, gtDims;
-    uint32_t *resIDs = nullptr, *gtIDs = nullptr;
-    loadResultBin(resultPath, resQueries, resDims, resIDs, nullptr);
-    loadResultBin(gtPath, gtQueries, gtDims, gtIDs, nullptr);
-    double stdRecall = computeRecallSTD(calculateRecallPerQuery(
-        resQueries, gtIDs, nullptr, gtDims, resIDs, resDims, 50));
-    std::cout << stdRecall << std::endl;
-  } else if (resultFormat == "vecs") {
-    std::cout << "vecs" << std::endl;
-  } else {
-    std::cerr << "ERROR: Input format does not meet requirements" << std::endl;
-    std::cout << "./compute_recall_std just support [vecs] or [bin] format now!"
-              << std::endl;
+      std::cout << std::format("The Avg of RecallList: {}", recallAvg)
+                << std::endl;
+      std::cout << std::format("The STD of RecallList: {}", stdRecall)
+                << std::endl;
+
+    } else if (resultFormat == "vecs") {
+      std::cout << "vecs" << std::endl;
+    } else {
+      std::cerr << "ERROR: Input format does not meet requirements"
+                << std::endl;
+      std::cout
+          << "./compute_recall_std just support [vecs] or [bin] format now!"
+          << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  } catch (const std::runtime_error &e) {
+    std::cerr << e.what() << std::endl;
     exit(EXIT_FAILURE);
   }
 }
